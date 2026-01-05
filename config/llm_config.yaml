@@ -32,12 +32,7 @@ model_parameters:
   temperature: 0.1         # Deterministic, suitable for agents + tools
   top_p: 0.9
   max_tokens: 1024
-  repetition_penalty: 1.05
   do_sample: true
   use_cache: true
-
-# ============================================================
-# Recommended Defaults
-# ============================================================
 
 default_model: "qwen-2.5-7b"
