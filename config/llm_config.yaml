@@ -1,1 +1,38 @@
-# LLM settings
+# LLM Configuration
+# Optimized for a local cluster
+
+models:
+
+  mistral-7b:
+    repo_id: "mistralai/Mistral-7B-Instruct-v0.2"
+    revision: "main"
+    description: "Mistral 7B Instruct - Excellent general-purpose model, fast and reliable"
+
+  llama-3.1-8b:
+    repo_id: "meta-llama/Llama-3.1-8B-Instruct"
+    revision: "main"
+    description: "Llama 3.1 8B - Strong reasoning and instruction-following, great default"
+
+  qwen-2.5-7b:
+    repo_id: "Qwen/Qwen2.5-7B-Instruct"
+    revision: "main"
+    description: "Qwen 2.5 7B - Very strong on structured outputs, JSON, and tool use"
+
+  qwen-2.5-14b:
+    repo_id: "Qwen/Qwen2.5-14B-Instruct"
+    revision: "main"
+    description: "Qwen 2.5 14B - High-quality reasoning for heavier tasks"
+
+# Model Runtime Parameters (global defaults)
+model_parameters:
+  n_ctx: 8192              # Medium cluster can handle larger context
+  n_threads: 16            # Scale with CPU cores per node
+  torch_dtype: "bfloat16"  # Best balance of speed + numerical stability
+  device_map: "auto"       # Enables multi-GPU or CPU/GPU split
+  temperature: 0.1         # Deterministic, suitable for agents + tools
+  top_p: 0.9
+  max_tokens: 1024
+  do_sample: true
+  use_cache: true
+
+default_model: "qwen-2.5-7b"
