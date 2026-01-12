@@ -5,7 +5,7 @@ Run this to verify Ollama connection and intent extraction.
 
 import sys
 from pathlib import Path
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 # Add parent directory to path to import llm module
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
@@ -76,8 +76,8 @@ def test_intent_extraction():
             available_sensors=["temperature", "humidity", "co2", "energy", "occupancy"],
             available_locations=["Room201", "Room202", "Room305", "FirstFloor", "BuildingA"],
             time_range=(
-                datetime.now() - timedelta(days=365),
-                datetime.now()
+                datetime(2025, 1, 1, tzinfo=timezone.utc),
+                datetime.now(timezone.utc) + timedelta(days=1)
             )
         )
         
@@ -130,7 +130,10 @@ def test_result_explanation():
         context = SystemContext(
             available_sensors=["temperature"],
             available_locations=["Room201"],
-            time_range=(datetime.now() - timedelta(days=30), datetime.now())
+            time_range=(
+                datetime(2025, 1, 1, tzinfo=timezone.utc),
+                datetime.now(timezone.utc) + timedelta(days=1)
+            )
         )
         
         # Mock query and extraction
