@@ -6,7 +6,7 @@ Handles JSON extraction, validation, and error recovery.
 import json
 import re
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dateutil import parser as date_parser
 
 from .interface import (
@@ -190,24 +190,23 @@ class TaskSpecificationParser:
     
     @staticmethod
     def _parse_datetime(dt_str: str) -> datetime:
-        """
-        Parse datetime string.
-        Handles ISO format, common variations, and relative dates.
-        """
         dt_str = dt_str.strip()
-        
-        # Try ISO format first
         try:
-            # Handle both 'Z' suffix and timezone offsets
-            return datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+            dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
         except ValueError:
             pass
         
-        # Try dateutil parser (handles many formats)
         try:
-            return date_parser.parse(dt_str)
+            dt = date_parser.parse(dt_str)
+            # FORCE AWARENESS if date_parser returns a naive object
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
         except Exception:
-            raise LLMParseError(f"Cannot parse datetime: '{dt_str}'. Expected ISO 8601 format.")
+            raise LLMParseError(f"Cannot parse datetime: '{dt_str}'")
     
     @staticmethod
     def validate_against_context(
@@ -267,14 +266,7 @@ class TaskSpecificationParser:
         if task_spec.end_time <= task_spec.start_time:
             errors.append("End time must be after start time.")
         
-        # Validate that time range isn't excessively long
-        time_delta = task_spec.end_time - task_spec.start_time
-        if time_delta.days > 365:
-            errors.append(
-                f"Time range is very long ({time_delta.days} days). "
-                "Consider using aggregation or a shorter time period."
-            )
-            
+
         return errors
 
 
@@ -297,7 +289,7 @@ class RelativeDateParser:
             Tuple of (start_datetime, end_datetime)
         """
         if reference_date is None:
-            reference_date = datetime.now()
+            reference_date = datetime.now(timezone.utc)
         
         expression = expression.lower().strip()
         
@@ -312,6 +304,8 @@ class RelativeDateParser:
             yesterday = reference_date - timedelta(days=1)
             start = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
             end = start.replace(hour=23, minute=59, second=59)
+            if end > reference_date:
+                end = reference_date
             return start, end
         
         # This week
