@@ -1,1 +1,8 @@
 pydantic
+ollama
+pydantic
+python-dateutil
+pytest
+pytest-asyncio
+python-dateutil
+PyYAML

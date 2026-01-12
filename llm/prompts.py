@@ -3,7 +3,7 @@ Prompt templates for LLM intent extraction and result explanation.
 """
 
 from typing import List, Dict
-from datetime import datetime
+from datetime import datetime, timedelta
 
 
 class PromptTemplates:
@@ -28,39 +28,80 @@ class PromptTemplates:
         Returns:
             Formatted prompt string
         """
+        current_date = datetime.now()
+        
+    @staticmethod
+    def get_intent_extraction_prompt(
+        user_query: str,
+        available_sensors: List[str],
+        available_locations: List[str],
+        time_range: tuple[datetime, datetime]
+    ) -> str:
+        """
+        Generate prompt for extracting structured task specification from natural language.
+        
+        Args:
+            user_query: The user's natural language query
+            available_sensors: List of valid sensor types in the system
+            available_locations: List of valid locations
+            time_range: Tuple of (earliest_datetime, latest_datetime) for available data
+            
+        Returns:
+            Formatted prompt string
+        """
+        current_date = datetime.now()
+        
         prompt = f"""You are a task extraction assistant for a smart building analytics system. 
-Your job is to convert natural language queries into structured JSON task specifications.
+    Your job is to convert natural language queries into structured JSON task specifications.
 
-SYSTEM CONTEXT:
-Available sensors: {', '.join(available_sensors)}
-Available locations: {', '.join(available_locations)}
-Data available from: {time_range[0].strftime('%Y-%m-%d')} to {time_range[1].strftime('%Y-%m-%d')}
-Current date: {datetime.now().strftime('%Y-%m-%d')}
+    SYSTEM CONTEXT:
+    Available sensors: {', '.join(available_sensors)}
+    Available locations: {', '.join(available_locations)}
+    Data available from: {time_range[0].strftime('%Y-%m-%d')} to {time_range[1].strftime('%Y-%m-%d')}
+    Current date: {current_date.strftime('%Y-%m-%d')}
 
-USER QUERY:
-{user_query}
+    USER QUERY:
+    {user_query}
 
-INSTRUCTIONS:
-Extract the following information and return ONLY valid JSON (no markdown, no explanations):
+    INSTRUCTIONS:
+    Extract the following information and return ONLY valid JSON (no markdown, no explanations):
 
-{{
-  "intent_type": "<query|comparison|aggregation>",
-  "sensor_type": "<temperature|humidity|co2|energy|occupancy>",
-  "location": "<single location string OR list of locations for comparison>",
-  "start_time": "<ISO 8601 datetime>",
-  "end_time": "<ISO 8601 datetime>",
-  "operation": "<mean|max|min|sum|std|count>",
-  "aggregation_level": "<hourly|daily|weekly|null>",
-  "confidence": <0.0-1.0 confidence score>
-}}
+    {{
+    "intent_type": "<query|comparison|aggregation>",
+    "sensor_type": "<temperature|humidity|co2|energy|occupancy>",
+    "location": "<single location string OR list of locations for comparison>",
+    "start_time": "<ISO 8601 datetime>",
+    "end_time": "<ISO 8601 datetime>",
+    "operation": "<mean|max|min|sum|std|count>",
+    "aggregation_level": "<hourly|daily|weekly|null>",
+    "confidence": <0.0-1.0 confidence score>
+    }}
 
-INTENT TYPES:
-- query: Simple statistical query for one location
-- comparison: Compare metrics across multiple locations
-- aggregation: Temporal aggregation (hourly/daily/weekly summaries)
+    INTENT TYPE SELECTION (choose ONE, prioritized):
+    1. **comparison**: Query compares multiple locations (PRIORITY if multiple locations mentioned)
+    - Examples: "Compare Room A vs Room B", "Which is warmer, Room201 or Room202?"
+    - location: ["Room201", "Room202"]
+    - aggregation_level: null (comparison doesn't use temporal aggregation)
 
-Return ONLY the JSON object.
-"""
+    2. **aggregation**: Query asks for temporal breakdown (hourly/daily/weekly) for ONE location
+    - Examples: "Show daily averages", "Hourly temperature trends", "Weekly summary"
+    - location: "Room201"
+    - aggregation_level: "hourly" | "daily" | "weekly"
+
+    3. **query**: Simple statistical query for ONE location without temporal breakdown
+    - Examples: "What was the average?", "Show me temperature in Room201"
+    - location: "Room201"
+    - aggregation_level: null
+
+    DATE PARSING RULES:
+    - "yesterday" = previous day from current date (e.g., {(current_date - timedelta(days=1)).strftime('%Y-%m-%d')})
+    - "last week" = past 7 days from current date (e.g., {(current_date - timedelta(days=7)).strftime('%Y-%m-%d')} to {current_date.strftime('%Y-%m-%d')})
+    - "past month" = past 30 days from current date (e.g., {(current_date - timedelta(days=30)).strftime('%Y-%m-%d')} to {current_date.strftime('%Y-%m-%d')})
+    - Always use {current_date.year} as the year for recent dates unless explicitly stated otherwise
+    - All times should be in ISO 8601 format with timezone (use 'T00:00:00+00:00' for start of day, 'T23:59:59+00:00' for end of day)
+
+    Return ONLY the JSON object.
+    """
         return prompt
     
     @staticmethod
