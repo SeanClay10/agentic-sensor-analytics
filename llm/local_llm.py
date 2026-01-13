@@ -1,9 +1,8 @@
 """
-Local LLM implementation using Ollama.
+Local LLM implementation using Ollama with native structured outputs.
 Handles connection to Ollama server, streaming responses, and retry logic.
 """
 
-import json
 import time
 from typing import Optional
 from pathlib import Path
@@ -24,7 +23,7 @@ from .config import LLMConfig, load_config
 class OllamaLLM(LLMInterface):
     """
     LLM implementation using Ollama for local model inference.
-    Supports streaming, retry logic, and proper error handling.
+    Uses Ollama's native structured output support with Pydantic schemas.
     """
     
     def __init__(
@@ -63,7 +62,6 @@ class OllamaLLM(LLMInterface):
         
         # Initialize Ollama client
         self.client = ollama.Client(host=self.base_url)
-        
     
     @classmethod
     def from_config(cls, config_path: Optional[str | Path] = None) -> 'OllamaLLM':
@@ -160,6 +158,7 @@ class OllamaLLM(LLMInterface):
     ) -> TaskSpecification:
         """
         Extract structured task specification from natural language query.
+        Uses Ollama's native structured output support with Pydantic schema.
         
         Args:
             user_query: The user's natural language question
@@ -180,39 +179,68 @@ class OllamaLLM(LLMInterface):
             time_range=system_context.time_range
         )
         
-        # Get LLM response
-        try:
-            llm_output = self._generate(prompt=prompt, stream=False)
-        except LLMGenerationError as e:
-            raise LLMGenerationError(f"Failed to extract intent: {e}")
+        messages = [
+            {"role": "user", "content": prompt}
+        ]
         
-        # Parse response into TaskSpecification
-        try:
-            task_spec = TaskSpecificationParser.parse(llm_output)
-        except LLMParseError as e:
-            raise LLMParseError(f"Failed to parse LLM output: {e}\n\nLLM Output:\n{llm_output}")
+        # Use Ollama's native structured JSON output 
+        for attempt in range(self.max_retries):
+            try:
+                response = self.client.chat(
+                    model=self.model_name,
+                    messages=messages,
+                    format=TaskSpecification.model_json_schema(),
+                    options={
+                        "temperature": self.temperature,
+                        "num_predict": self.config.llm.max_tokens
+                    }
+                )
+                
+                # Parse and validate response using Pydantic
+                task_spec = TaskSpecification.model_validate_json(
+                    response['message']['content']
+                )
+                
+                # Validate against system context
+                errors = TaskSpecificationParser.validate_against_context(
+                    task_spec=task_spec,
+                    available_sensors=system_context.available_sensors,
+                    available_locations=system_context.available_locations,
+                    time_range=system_context.time_range
+                )
+                
+                if errors:
+                    if attempt < self.max_retries - 1:
+                        # Retry with error feedback
+                        error_msg = "Previous extraction had errors:\n" + "\n".join(f"- {e}" for e in errors)
+                        messages.append({
+                            "role": "assistant",
+                            "content": response['message']['content']
+                        })
+                        messages.append({
+                            "role": "user",
+                            "content": f"{error_msg}\n\nPlease correct the extraction."
+                        })
+                        continue
+                    else:
+                        # Generate user-friendly error explanation
+                        error_explanation = self.explain_error(user_query, errors)
+                        raise LLMParseError(error_explanation)
+                
+                # Success!
+                return task_spec
+                
+            except LLMParseError:
+                raise
+            except Exception as e:
+                if attempt < self.max_retries - 1:
+                    wait_time = 2 ** attempt
+                    time.sleep(wait_time)
+                    continue
+                else:
+                    raise LLMGenerationError(f"Failed to extract intent: {e}")
         
-        # Validate confidence threshold
-        if task_spec.confidence < self.min_confidence:
-            raise LLMParseError(
-                f"Low confidence extraction ({task_spec.confidence:.2f}). "
-                "Please rephrase your query to be more specific."
-            )
-        
-        # Validate against system context
-        errors = TaskSpecificationParser.validate_against_context(
-            task_spec=task_spec,
-            available_sensors=system_context.available_sensors,
-            available_locations=system_context.available_locations,
-            time_range=system_context.time_range
-        )
-        
-        if errors:
-            # Generate user-friendly error explanation
-            error_explanation = self.explain_error(user_query, errors)
-            raise LLMParseError(error_explanation)
-        
-        return task_spec
+        raise LLMGenerationError("Failed to extract intent after all retries")
     
     def explain_results(
         self,

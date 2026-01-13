@@ -17,7 +17,7 @@ class LLMSettings(BaseModel):
     max_tokens: int = Field(default=4096, gt=0)
     timeout: int = Field(default=30, gt=0)
     max_retries: int = Field(default=3, ge=0)
-    min_confidence: float = Field(default=0.7, ge=0.0, le=1.0)
+    min_confidence: float = Field(default=0.5, ge=0.0, le=1.0)
 
 
 class LoggingSettings(BaseModel):

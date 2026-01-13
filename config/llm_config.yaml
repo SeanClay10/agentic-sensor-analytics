@@ -8,7 +8,7 @@ llm:
   base_url: "http://localhost:11434"
   
   # Generation parameters
-  temperature: 0.1  # Low for consistency
+  temperature: 0  # Low for consistency
   max_tokens: 4096
   
   # Reliability settings
