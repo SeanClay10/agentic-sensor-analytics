@@ -6,7 +6,7 @@ Handles JSON extraction, validation, and error recovery.
 import json
 import re
 from typing import Optional
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 from dateutil import parser as date_parser
 
 from .interface import (
@@ -54,11 +54,11 @@ class TaskSpecificationParser:
             return task_spec
             
         except json.JSONDecodeError as e:
-            raise LLMParseError(f"Invalid JSON in LLM output: {e}")
+            raise LLMParseError(f"Invalid JSON in LLM output: {e}\n\nOutput:\n{llm_output}")
         except ValueError as e:
-            raise LLMParseError(f"Validation error: {e}")
+            raise LLMParseError(f"Validation error: {e}\n\nParsed data: {data if 'data' in locals() else 'N/A'}")
         except Exception as e:
-            raise LLMParseError(f"Unexpected parsing error: {e}")
+            raise LLMParseError(f"Unexpected parsing error: {e}\n\nOutput:\n{llm_output}")
     
     @staticmethod
     def _extract_json(text: str) -> str:
@@ -77,12 +77,17 @@ class TaskSpecificationParser:
             if first_newline != -1 and last_backticks != -1:
                 text = text[first_newline+1:last_backticks].strip()
         
-        # Find JSON object boundaries
-        json_match = re.search(r'\{.*\}', text, re.DOTALL)
-        if json_match:
-            return json_match.group(0)
+        # Remove any leading/trailing text that isn't part of JSON
+        # Find the first { and last }
+        start_idx = text.find('{')
+        end_idx = text.rfind('}')
         
-        raise LLMParseError("No JSON object found in LLM output")
+        if start_idx == -1 or end_idx == -1:
+            raise LLMParseError("No JSON object found in LLM output")
+        
+        json_str = text[start_idx:end_idx+1]
+        
+        return json_str
     
     @staticmethod
     def _normalize_data(data: dict) -> dict:
@@ -100,12 +105,29 @@ class TaskSpecificationParser:
                 'simple_query': 'query',
                 'single_query': 'query',
                 'temporal_query': 'query',
+                'simple': 'query',
                 'compare': 'comparison',
                 'comparison_query': 'comparison',
+                'spatial_comparison': 'comparison',
                 'temporal_aggregation': 'aggregation',
-                'aggregate': 'aggregation'
+                'aggregate': 'aggregation',
+                'time_series': 'aggregation'
             }
             normalized['intent_type'] = intent_mapping.get(intent, intent)
+        
+        # Normalize sensor_type
+        if 'sensor_type' in normalized:
+            sensor = normalized['sensor_type'].lower().strip()
+            # Handle common variations
+            sensor_mapping = {
+                'temp': 'temperature',
+                'co2_concentration': 'co2',
+                'carbon_dioxide': 'co2',
+                'power': 'energy',
+                'occupant': 'occupancy',
+                'people_count': 'occupancy'
+            }
+            normalized['sensor_type'] = sensor_mapping.get(sensor, sensor)
         
         # Normalize operation
         if 'operation' in normalized:
@@ -120,7 +142,8 @@ class TaskSpecificationParser:
                 'standard_deviation': 'std',
                 'stddev': 'std',
                 'num': 'count',
-                'number': 'count'
+                'number': 'count',
+                'cnt': 'count'
             }
             normalized['operation'] = operation_mapping.get(op, op)
         
@@ -130,10 +153,16 @@ class TaskSpecificationParser:
             if agg and isinstance(agg, str):
                 agg = agg.lower().strip()
                 # Handle "null", "none", etc.
-                if agg in ['null', 'none', 'n/a', '']:
+                if agg in ['null', 'none', 'n/a', '', 'na']:
                     normalized['aggregation_level'] = None
                 else:
-                    normalized['aggregation_level'] = agg
+                    # Handle variations
+                    agg_mapping = {
+                        'hour': 'hourly',
+                        'day': 'daily',
+                        'week': 'weekly'
+                    }
+                    normalized['aggregation_level'] = agg_mapping.get(agg, agg)
         
         # Parse datetime strings
         if 'start_time' in normalized and isinstance(normalized['start_time'], str):
@@ -148,29 +177,36 @@ class TaskSpecificationParser:
         
         # Ensure confidence is float
         if 'confidence' in normalized:
-            normalized['confidence'] = float(normalized['confidence'])
+            try:
+                normalized['confidence'] = float(normalized['confidence'])
+            except (ValueError, TypeError):
+                # Default to 0.8 if confidence parsing fails
+                normalized['confidence'] = 0.8
+        else:
+            # Default confidence if not provided
+            normalized['confidence'] = 0.85
         
         return normalized
     
     @staticmethod
     def _parse_datetime(dt_str: str) -> datetime:
-        """
-        Parse datetime string.
-        Handles ISO format, common variations, and relative dates.
-        """
         dt_str = dt_str.strip()
-        
-        # Try ISO format first
         try:
-            return datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+            dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
         except ValueError:
             pass
         
-        # Try dateutil parser (handles many formats)
         try:
-            return date_parser.parse(dt_str)
+            dt = date_parser.parse(dt_str)
+            # FORCE AWARENESS if date_parser returns a naive object
+            if dt.tzinfo is None:
+                dt = dt.replace(tzinfo=timezone.utc)
+            return dt
         except Exception:
-            raise LLMParseError(f"Cannot parse datetime: {dt_str}")
+            raise LLMParseError(f"Cannot parse datetime: '{dt_str}'")
     
     @staticmethod
     def validate_against_context(
@@ -198,35 +234,39 @@ class TaskSpecificationParser:
         if task_spec.sensor_type not in available_sensors:
             errors.append(
                 f"Unknown sensor type '{task_spec.sensor_type}'. "
-                f"Available: {', '.join(available_sensors)}"
+                f"Available sensors: {', '.join(available_sensors)}"
             )
         
         # Validate locations
         locations = task_spec.get_locations_list()
-        for loc in locations:
-            if loc not in available_locations:
-                errors.append(
-                    f"Unknown location '{loc}'. "
-                    f"Available: {', '.join(available_locations[:5])}..."
-                )
+        invalid_locations = [loc for loc in locations if loc not in available_locations]
+        
+        if invalid_locations:
+            # Show a few suggestions if there are many locations
+            suggestions = available_locations[:5]
+            errors.append(
+                f"Unknown location(s): {', '.join(invalid_locations)}. "
+                f"Available locations include: {', '.join(suggestions)}..."
+            )
         
         # Validate time range
         min_date, max_date = time_range
         if task_spec.start_time < min_date:
             errors.append(
-                f"Start time {task_spec.start_time.date()} is before available data "
-                f"(earliest: {min_date.date()})"
+                f"Start time ({task_spec.start_time.date()}) is before available data. "
+                f"Data starts from {min_date.date()}."
             )
         if task_spec.end_time > max_date:
             errors.append(
-                f"End time {task_spec.end_time.date()} is after available data "
-                f"(latest: {max_date.date()})"
+                f"End time ({task_spec.end_time.date()}) is after available data. "
+                f"Data available until {max_date.date()}."
             )
         
-        # Validate time range makes sense
+        # Validate time range makes sense (should be caught by Pydantic, but double-check)
         if task_spec.end_time <= task_spec.start_time:
-            errors.append("End time must be after start time")
-            
+            errors.append("End time must be after start time.")
+        
+
         return errors
 
 
@@ -234,7 +274,10 @@ class RelativeDateParser:
     """Helper class for parsing relative date expressions."""
     
     @staticmethod
-    def parse_relative_date(expression: str, reference_date: Optional[datetime] = None) -> tuple[datetime, datetime]:
+    def parse_relative_date(
+        expression: str,
+        reference_date: Optional[datetime] = None
+    ) -> tuple[datetime, datetime]:
         """
         Parse relative date expressions like "today", "yesterday", "last week".
         
@@ -246,7 +289,7 @@ class RelativeDateParser:
             Tuple of (start_datetime, end_datetime)
         """
         if reference_date is None:
-            reference_date = datetime.now()
+            reference_date = datetime.now(timezone.utc)
         
         expression = expression.lower().strip()
         
@@ -261,18 +304,34 @@ class RelativeDateParser:
             yesterday = reference_date - timedelta(days=1)
             start = yesterday.replace(hour=0, minute=0, second=0, microsecond=0)
             end = start.replace(hour=23, minute=59, second=59)
+            if end > reference_date:
+                end = reference_date
+            return start, end
+        
+        # This week
+        if expression in ["this week", "current week"]:
+            # Start of week (Monday)
+            days_since_monday = reference_date.weekday()
+            start = (reference_date - timedelta(days=days_since_monday)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
+            end = reference_date.replace(hour=23, minute=59, second=59)
             return start, end
         
         # Last week
         if expression == "last week":
             end = reference_date.replace(hour=23, minute=59, second=59)
-            start = (reference_date - timedelta(days=7)).replace(hour=0, minute=0, second=0, microsecond=0)
+            start = (reference_date - timedelta(days=7)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
             return start, end
         
         # Last month
         if expression == "last month":
             end = reference_date.replace(hour=23, minute=59, second=59)
-            start = (reference_date - timedelta(days=30)).replace(hour=0, minute=0, second=0, microsecond=0)
+            start = (reference_date - timedelta(days=30)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
             return start, end
         
         # Last N days
@@ -280,7 +339,17 @@ class RelativeDateParser:
         if match:
             days = int(match.group(1))
             end = reference_date.replace(hour=23, minute=59, second=59)
-            start = (reference_date - timedelta(days=days)).replace(hour=0, minute=0, second=0, microsecond=0)
+            start = (reference_date - timedelta(days=days)).replace(
+                hour=0, minute=0, second=0, microsecond=0
+            )
             return start, end
         
-        raise ValueError(f"Cannot parse relative date expression: {expression}")
+        # Past N hours
+        match = re.match(r'past (\d+) hours?', expression)
+        if match:
+            hours = int(match.group(1))
+            end = reference_date
+            start = reference_date - timedelta(hours=hours)
+            return start, end
+        
+        raise ValueError(f"Cannot parse relative date expression: '{expression}'")

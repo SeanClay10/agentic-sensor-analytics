@@ -1,40 +1,30 @@
 # LLM Configuration
-# Optimized for a local cluster with llama-cpp-python
 
-models:
+llm:
+  # Model configuration
+  model_name: "llama3.1:8b"
+  
+  # Ollama server settings
+  base_url: "http://localhost:11434"
+  
+  # Generation parameters
+  temperature: 0.1  # Low for consistency
+  max_tokens: 4096
+  
+  # Reliability settings
+  timeout: 30  # seconds
+  max_retries: 3
+  
+  # Thresholds
+  min_confidence: 0.7
 
-  mistral-7b:
-    repo_id: "TheBloke/Mistral-7B-Instruct-v0.2-GGUF"
-    model_filename: "mistral-7b-instruct-v0.2.Q4_K_M.gguf"
-    revision: "main"
-    description: "Mistral 7B Instruct - Excellent general-purpose model, fast and reliable"
-
-  llama-3.1-8b:
-    repo_id: "bartowski/Meta-Llama-3.1-8B-Instruct-GGUF"
-    model_filename: "Meta-Llama-3.1-8B-Instruct-Q4_K_M.gguf"
-    revision: "main"
-    description: "Llama 3.1 8B - Strong reasoning and instruction-following, great default"
-
-  qwen-2.5-7b:
-    repo_id: "Qwen/Qwen2.5-7B-Instruct-GGUF"
-    model_filename: "qwen2.5-7b-instruct-q4_k_m.gguf"
-    revision: "main"
-    description: "Qwen 2.5 7B - Very strong on structured outputs, JSON, and tool use"
-
-  qwen-2.5-14b:
-    repo_id: "Qwen/Qwen2.5-14B-Instruct-GGUF"
-    model_filename: "qwen2.5-14b-instruct-q4_k_m.gguf"
-    revision: "main"
-    description: "Qwen 2.5 14B - High-quality reasoning for heavier tasks"
-
-# Model Runtime Parameters (global defaults)
-model_parameters:
-  n_ctx: 8192              # Context window size
-  n_threads: 16            # CPU threads to use
-  n_gpu_layers: -1         # GPU layers
-  temperature: 0.1         # Deterministic, suitable for agents + tools
-  top_p: 0.9               # Nucleus sampling
-  max_tokens: 1024         # Maximum tokens to generate
-  verbose: false           # Enable llama.cpp verbose logging
-
-default_model: "qwen-2.5-7b"
+# Logging configuration
+logging:
+  level: "INFO"  # DEBUG, INFO, WARNING, ERROR
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+  file: "logs/llm.log"
+  
+# Performance settings
+performance:
+  enable_streaming: true  # Stream responses for better UX
+  cache_prompts: false
