@@ -1,212 +1,22 @@
 """
-Parser for converting LLM outputs into structured TaskSpecification objects.
-Handles JSON extraction, validation, and error recovery.
+Parser for validating TaskSpecification objects against system context.
 """
 
-import json
 import re
 from typing import Optional
 from datetime import datetime, timedelta, timezone
-from dateutil import parser as date_parser
 
 from .interface import (
     TaskSpecification,
-    IntentType,
-    Operation,
-    AggregationLevel,
     LLMParseError
 )
 
 
 class TaskSpecificationParser:
     """
-    Parses LLM outputs into validated TaskSpecification objects.
-    Handles common LLM output issues like markdown wrapping, formatting errors, etc.
+    Validates TaskSpecification objects against system context.
+    Pydantic validation and JSON parsing is handled by instructor.
     """
-    
-    @staticmethod
-    def parse(llm_output: str) -> TaskSpecification:
-        """
-        Parse LLM output string into TaskSpecification.
-        
-        Args:
-            llm_output: Raw string output from LLM
-            
-        Returns:
-            Validated TaskSpecification object
-            
-        Raises:
-            LLMParseError: If parsing fails
-        """
-        try:
-            # Extract JSON from potential markdown wrapping
-            json_str = TaskSpecificationParser._extract_json(llm_output)
-            
-            # Parse JSON
-            data = json.loads(json_str)
-            
-            # Normalize field values
-            normalized_data = TaskSpecificationParser._normalize_data(data)
-            
-            # Validate and construct TaskSpecification
-            task_spec = TaskSpecification.model_validate(normalized_data)
-            
-            return task_spec
-            
-        except json.JSONDecodeError as e:
-            raise LLMParseError(f"Invalid JSON in LLM output: {e}\n\nOutput:\n{llm_output}")
-        except ValueError as e:
-            raise LLMParseError(f"Validation error: {e}\n\nParsed data: {data if 'data' in locals() else 'N/A'}")
-        except Exception as e:
-            raise LLMParseError(f"Unexpected parsing error: {e}\n\nOutput:\n{llm_output}")
-    
-    @staticmethod
-    def _extract_json(text: str) -> str:
-        """
-        Extract JSON from text, handling markdown code blocks and other wrapping.
-        """
-        text = text.strip()
-        
-        # Remove markdown code blocks
-        if text.startswith("```"):
-            # Find the end of the opening backticks line
-            first_newline = text.find('\n')
-            # Find the closing backticks
-            last_backticks = text.rfind("```")
-            
-            if first_newline != -1 and last_backticks != -1:
-                text = text[first_newline+1:last_backticks].strip()
-        
-        # Remove any leading/trailing text that isn't part of JSON
-        # Find the first { and last }
-        start_idx = text.find('{')
-        end_idx = text.rfind('}')
-        
-        if start_idx == -1 or end_idx == -1:
-            raise LLMParseError("No JSON object found in LLM output")
-        
-        json_str = text[start_idx:end_idx+1]
-        
-        return json_str
-    
-    @staticmethod
-    def _normalize_data(data: dict) -> dict:
-        """
-        Normalize and clean extracted data before validation.
-        Handles common LLM output variations.
-        """
-        normalized = data.copy()
-        
-        # Normalize intent_type
-        if 'intent_type' in normalized:
-            intent = normalized['intent_type'].lower().strip()
-            # Handle variations
-            intent_mapping = {
-                'simple_query': 'query',
-                'single_query': 'query',
-                'temporal_query': 'query',
-                'simple': 'query',
-                'compare': 'comparison',
-                'comparison_query': 'comparison',
-                'spatial_comparison': 'comparison',
-                'temporal_aggregation': 'aggregation',
-                'aggregate': 'aggregation',
-                'time_series': 'aggregation'
-            }
-            normalized['intent_type'] = intent_mapping.get(intent, intent)
-        
-        # Normalize sensor_type
-        if 'sensor_type' in normalized:
-            sensor = normalized['sensor_type'].lower().strip()
-            # Handle common variations
-            sensor_mapping = {
-                'temp': 'temperature',
-                'co2_concentration': 'co2',
-                'carbon_dioxide': 'co2',
-                'power': 'energy',
-                'occupant': 'occupancy',
-                'people_count': 'occupancy'
-            }
-            normalized['sensor_type'] = sensor_mapping.get(sensor, sensor)
-        
-        # Normalize operation
-        if 'operation' in normalized:
-            op = normalized['operation'].lower().strip()
-            # Handle common variations
-            operation_mapping = {
-                'average': 'mean',
-                'avg': 'mean',
-                'maximum': 'max',
-                'minimum': 'min',
-                'total': 'sum',
-                'standard_deviation': 'std',
-                'stddev': 'std',
-                'num': 'count',
-                'number': 'count',
-                'cnt': 'count'
-            }
-            normalized['operation'] = operation_mapping.get(op, op)
-        
-        # Normalize aggregation_level
-        if 'aggregation_level' in normalized:
-            agg = normalized['aggregation_level']
-            if agg and isinstance(agg, str):
-                agg = agg.lower().strip()
-                # Handle "null", "none", etc.
-                if agg in ['null', 'none', 'n/a', '', 'na']:
-                    normalized['aggregation_level'] = None
-                else:
-                    # Handle variations
-                    agg_mapping = {
-                        'hour': 'hourly',
-                        'day': 'daily',
-                        'week': 'weekly'
-                    }
-                    normalized['aggregation_level'] = agg_mapping.get(agg, agg)
-        
-        # Parse datetime strings
-        if 'start_time' in normalized and isinstance(normalized['start_time'], str):
-            normalized['start_time'] = TaskSpecificationParser._parse_datetime(
-                normalized['start_time']
-            )
-        
-        if 'end_time' in normalized and isinstance(normalized['end_time'], str):
-            normalized['end_time'] = TaskSpecificationParser._parse_datetime(
-                normalized['end_time']
-            )
-        
-        # Ensure confidence is float
-        if 'confidence' in normalized:
-            try:
-                normalized['confidence'] = float(normalized['confidence'])
-            except (ValueError, TypeError):
-                # Default to 0.8 if confidence parsing fails
-                normalized['confidence'] = 0.8
-        else:
-            # Default confidence if not provided
-            normalized['confidence'] = 0.85
-        
-        return normalized
-    
-    @staticmethod
-    def _parse_datetime(dt_str: str) -> datetime:
-        dt_str = dt_str.strip()
-        try:
-            dt = datetime.fromisoformat(dt_str.replace('Z', '+00:00'))
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            return dt
-        except ValueError:
-            pass
-        
-        try:
-            dt = date_parser.parse(dt_str)
-            # FORCE AWARENESS if date_parser returns a naive object
-            if dt.tzinfo is None:
-                dt = dt.replace(tzinfo=timezone.utc)
-            return dt
-        except Exception:
-            raise LLMParseError(f"Cannot parse datetime: '{dt_str}'")
     
     @staticmethod
     def validate_against_context(
@@ -266,7 +76,6 @@ class TaskSpecificationParser:
         if task_spec.end_time <= task_spec.start_time:
             errors.append("End time must be after start time.")
         
-
         return errors
 
 
