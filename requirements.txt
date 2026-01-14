@@ -1,4 +1,6 @@
 langchain
+pandas
+scipy
 pydantic
 ollama
 pydantic
