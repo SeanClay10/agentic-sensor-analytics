@@ -54,9 +54,6 @@ class PromptTemplates:
         prompt = f"""You are a task extraction assistant for a smart building analytics system. 
     Your job is to convert natural language queries into structured JSON task specifications.
 
-    SYSTEM CONTEXT:
-    Available sensors: {', '.join(available_sensors)}
-    Available locations: {', '.join(available_locations)}
     Data available from: {time_range[0].strftime('%Y-%m-%d')} to {time_range[1].strftime('%Y-%m-%d')}
     Current date: {current_date.strftime('%Y-%m-%d')}
 
