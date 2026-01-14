@@ -110,13 +110,26 @@ class TemporalAggregationTool(AnalyticsTool):
             for ts, val in aggregated.items() if pd.notna(val)
         ]
         
+        # Calculate overall aggregate across entire period
+        if operation == 'mean':
+            overall_aggregate = data['value'].mean()
+        elif operation == 'min':
+            overall_aggregate = data['value'].min()
+        elif operation == 'max':
+            overall_aggregate = data['value'].max()
+        elif operation == 'sum':
+            overall_aggregate = data['value'].sum()
+        else:
+            overall_aggregate = data['value'].agg(operation)
+        
         return AnalyticsResult(
             value=result_data,
             unit=data['unit'].iloc[0],
             metadata={
                 "aggregation_level": aggregation_level,
                 "operation": operation,
-                "num_periods": len(result_data)
+                "num_periods": len(result_data),
+                "overall_aggregate": float(overall_aggregate)
             },
             success=True,
             execution_time_ms=(time.time() - start_time) * 1000
