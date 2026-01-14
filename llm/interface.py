@@ -93,21 +93,6 @@ class TaskSpecification(BaseModel):
         """Get locations as a list regardless of whether it's string or list."""
         return [self.location] if isinstance(self.location, str) else self.location
     
-    class Config:
-        json_schema_example = {
-            "example": {
-                "intent_type": "query",
-                "sensor_type": "temperature",
-                "location": "FirstFloor",
-                "start_time": "2026-01-01T00:00:00",
-                "end_time": "2026-01-05T23:59:59",
-                "operation": "mean",
-                "aggregation_level": None,
-                "confidence": 0.95
-            }
-        }
-
-
 class LLMInterface(ABC):
     """
     Abstract base class for LLM components.
