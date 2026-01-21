@@ -7,7 +7,6 @@ import sys
 from pathlib import Path
 from datetime import datetime, timedelta, timezone
 
-# Add parent directory to path to import llm module
 sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
 from llm import OllamaLLM, SystemContext, LLMError, LLMConfig
@@ -155,6 +154,9 @@ def test_result_explanation():
         
         # Generate explanation
         explanation = llm.explain_results(query, task_spec, mock_results)
+
+        assert len(explanation) > 0, "Explanation should not be empty"
+        assert "temperature" in explanation.lower() or "22.4" in explanation
         
         print("✓ Explanation generated successfully:")
         print(f"  {explanation}")
