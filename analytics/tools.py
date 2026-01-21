@@ -15,9 +15,9 @@ class TemporalMeanTool(AnalyticsTool):
     def __init__(self):
         super().__init__()
         self.name = "temporal_mean"
-        self.description = "Calculate mean (average) value"
-        self.parameters = []
-    
+        self.description = "Calculate mean, min, or max value"
+        self.parameters = ["operation"]
+
     def execute(self, data: pd.DataFrame, **kwargs) -> AnalyticsResult:
         start_time = time.time()
         
@@ -33,11 +33,29 @@ class TemporalMeanTool(AnalyticsTool):
                 execution_time_ms=(time.time() - start_time) * 1000
             )
         
-        # Calculate mean using pandas .mean()
-        mean_value = data['value'].mean()
+        # Get operation from kwargs (default to 'mean')
+        operation = kwargs.get('operation', 'mean')
+        
+        # Calculate based on operation
+        if operation == 'mean':
+            result_value = data['value'].mean()
+        elif operation == 'min':
+            result_value = data['value'].min()
+        elif operation == 'max':
+            result_value = data['value'].max()
+        else:
+            return AnalyticsResult(
+                value=None,
+                unit=None,
+                metadata={},
+                success=False,
+                error_message=f"Invalid operation: {operation}",
+                execution_time_ms=(time.time() - start_time) * 1000
+            )
         
         # Compute metadata: std dev, min, max, sample size
         metadata = {
+            "operation": operation,
             "std_dev": float(data['value'].std()),
             "min": float(data['value'].min()),
             "max": float(data['value'].max()),
@@ -46,7 +64,7 @@ class TemporalMeanTool(AnalyticsTool):
         
         # Return AnalyticsResult with statistics
         return AnalyticsResult(
-            value=float(mean_value),
+            value=float(result_value),
             unit=data['unit'].iloc[0],
             metadata=metadata,
             success=True,
@@ -83,7 +101,7 @@ class TemporalAggregationTool(AnalyticsTool):
         operation = kwargs.get('operation', 'mean')
         
         freq_map = {
-            'hourly': 'H',
+            'hourly': 'h',
             'daily': 'D',
             'weekly': 'W'
         }
