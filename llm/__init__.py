@@ -59,7 +59,12 @@ from .parser import (
 
 from .local_llm import OllamaLLM
 
-from .config import LLMConfig
+from .config import (
+    LLMConfig,
+    LLMSettings,
+    LoggingSettings,
+    PerformanceSettings
+)
 
 __all__ = [
     # Main LLM implementation
@@ -87,6 +92,9 @@ __all__ = [
     
     # Configuration
     'LLMConfig',
+    'LLMSettings',
+    'LoggingSettings',
+    'PerformanceSettings',
 ]
 
 __version__ = '0.1.0'
