@@ -1,8 +1,10 @@
+data
 langchain
 pandas
 scipy
 pydantic
 ollama
+requests
 pydantic
 python-dateutil
 pytest
