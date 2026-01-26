@@ -1,0 +1,53 @@
+# Data Module Configuration
+# SMT Analytics API settings and data access parameters
+
+api:
+  username:
+  password:
+  
+  # API Endpoint
+  base_url:
+  
+  # Peavy Hall Project ID
+  job_id:
+  
+  # Connection Settings
+  timeout: 30
+  max_retries: 3
+
+cache:
+  # Cache metadata to reduce API calls
+  enabled: true
+  ttl_seconds: 3600
+  max_size_mb: 100
+
+validation:
+  # Data quality validation
+  check_ranges: true
+  flag_outliers: true
+  outlier_std_devs: 3.0
+
+sensor_mapping:
+  # Keywords to identify sensor types from API names
+  temperature_keywords:
+    - "tmp"
+    - "temp"
+    - "temperature"
+    - "int_tmp" 
+  
+  humidity_keywords:
+    - "humidity"
+    - "rh"
+    - "relative humidity"
+    - "int_rh"
+  
+  co2_keywords:
+    - "co2"
+    - "carbon dioxide"
+    - "carbondioxide"
+  
+  moisture_keywords:
+    - "moisture"
+    - "mc"
+    - "moisture content"
+    - "pmm"
