@@ -9,5 +9,5 @@ pydantic
 python-dateutil
 pytest
 pytest-asyncio
-python-dateutil
+python-dotenv
 PyYAML

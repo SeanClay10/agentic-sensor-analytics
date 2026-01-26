@@ -47,8 +47,7 @@ ollama pull llama3.1:8b
 ```
 
 ### Configuration
-Update `config/data_config.yaml` with SMT API credentials
+Create .env file from .env.example with SMT API credentials.
 
 ## Author
-
 Sean Clayton  

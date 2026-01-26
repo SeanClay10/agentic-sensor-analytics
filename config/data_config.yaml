@@ -2,15 +2,9 @@
 # SMT Analytics API settings and data access parameters
 
 api:
-  username:
-  password:
-  
-  # API Endpoint
-  base_url:
-  
-  # Peavy Hall Project ID
-  job_id:
-  
+  #Job ID
+  job_id: 3653
+
   # Connection Settings
   timeout: 30
   max_retries: 3

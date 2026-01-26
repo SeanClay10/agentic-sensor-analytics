@@ -6,13 +6,17 @@ import yaml
 from pathlib import Path
 from typing import Optional
 from pydantic import BaseModel, Field
+import os
+from dotenv import load_dotenv
+
+load_dotenv()
 
 
 class APISettings(BaseModel):
     """API connection settings."""
-    username: str = Field(description="API username")
-    password: str = Field(description="API password")
-    base_url: str = Field(description="Base URL for API")
+    username: str = Field(default_factory=lambda: os.getenv("SMT_API_USERNAME", ""))
+    password: str = Field(default_factory=lambda: os.getenv("SMT_API_PASSWORD", ""))
+    base_url: str = Field(default_factory=lambda: os.getenv("SMT_API_BASE_URL", ""))
     job_id: int = Field(description="Job ID for Peavy Hall project")
     timeout: int = Field(default=30, description="Request timeout in seconds")
     max_retries: int = Field(default=3, description="Maximum number of retries")
