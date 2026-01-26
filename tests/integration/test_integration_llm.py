@@ -83,7 +83,7 @@ def test_intent_extraction():
         # Test queries
         test_queries = [
             "What was the average temperature in Room201 yesterday?",
-            "Compare CO2 levels between Room201 and Room202 last week",
+            "Compare humidity levels between Room201 and Room202 last week",
             "Show me daily average humidity for FirstFloor over the past month"
         ]
         
