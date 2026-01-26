@@ -5,7 +5,7 @@ Defines the contract that all LLM implementations must follow.
 
 from abc import ABC, abstractmethod
 from typing import Optional
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, Field, field_validator, model_validator
 from datetime import datetime
 from enum import Enum
 from .prompts import SystemContext
@@ -77,17 +77,14 @@ class TaskSpecification(BaseModel):
             raise ValueError("end_time must be after start_time")
         return v
     
-    @field_validator('location')
-    @classmethod
-    def validate_location_type(cls, location: str | list[str], info) -> str | list[str]:
+    @model_validator(mode='after')
+    def validate_location_matches_intent(self) -> 'TaskSpecification':
         """Validate location matches intent type."""
-        if 'intent_type' in info.data:
-            intent = info.data['intent_type']
-            if intent == IntentType.COMPARISON and isinstance(location, str):
-                raise ValueError("Comparison queries require multiple locations")
-            if intent == IntentType.QUERY and isinstance(location, list):
-                raise ValueError("Simple queries require single location")
-        return location
+        if self.intent_type == IntentType.COMPARISON and isinstance(self.location, str):
+            raise ValueError("Comparison queries require multiple locations")
+        if self.intent_type == IntentType.QUERY and isinstance(self.location, list):
+            raise ValueError("Simple queries require single location")
+        return self
     
     def get_locations_list(self) -> list[str]:
         """Get locations as a list regardless of whether it's string or list."""
