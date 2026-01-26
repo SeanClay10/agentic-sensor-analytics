@@ -3,7 +3,7 @@ Prompt templates for LLM intent extraction and result explanation.
 """
 
 from typing import List, Dict
-from datetime import datetime, timedelta
+from datetime import datetime, timedelta, timezone
 
 
 class PromptTemplates:
@@ -28,7 +28,7 @@ class PromptTemplates:
         Returns:
             Formatted prompt string
         """
-        current_date = datetime.now()
+        current_date = datetime.now((timezone.utc))
         
     @staticmethod
     def get_intent_extraction_prompt(
@@ -49,13 +49,19 @@ class PromptTemplates:
         Returns:
             Formatted prompt string
         """
-        current_date = datetime.now()
+        current_date = datetime.now((timezone.utc))
         
         prompt = f"""You are a task extraction assistant for a smart building analytics system. 
     Your job is to convert natural language queries into structured JSON task specifications.
 
     Data available from: {time_range[0].strftime('%Y-%m-%d')} to {time_range[1].strftime('%Y-%m-%d')}
     Current date: {current_date.strftime('%Y-%m-%d')}
+
+    AVAILABLE LOCATIONS:
+    {', '.join(available_locations)}
+
+    AVAILABLE SENSOR TYPES:
+    {', '.join(available_sensors)}
 
     USER QUERY:
     {user_query}
@@ -65,7 +71,7 @@ class PromptTemplates:
 
     {{
     "intent_type": "<query|comparison|aggregation>",
-    "sensor_type": "<temperature|humidity|co2|energy|occupancy>",
+    "sensor_type": "<temperature|humidity|moisture|strain>",
     "location": "<single location string OR list of locations for comparison>",
     "start_time": "<ISO 8601 datetime>",
     "end_time": "<ISO 8601 datetime>",
@@ -74,21 +80,31 @@ class PromptTemplates:
     "confidence": <0.0-1.0 confidence score>
     }}
 
-    INTENT TYPE SELECTION (choose ONE, prioritized):
-    1. **comparison**: Query compares multiple locations (PRIORITY if multiple locations mentioned)
-    - Examples: "Compare Room A vs Room B", "Which is warmer, Room201 or Room202?"
-    - location: ["Room201", "Room202"]
-    - aggregation_level: null (comparison doesn't use temporal aggregation)
+    INTENT TYPE SELECTION (choose ONE, apply these rules IN ORDER):
 
-    2. **aggregation**: Query asks for temporal breakdown (hourly/daily/weekly) for ONE location
-    - Examples: "Show daily averages", "Hourly temperature trends", "Weekly summary"
-    - location: "Room201"
+    1. **comparison**: PRIORITY - Query mentions multiple locations OR asks to compare
+    - Keywords: "compare", "vs", "versus", "between", "which is", "difference"
+    - Examples: "Compare Node 11 vs Node 15", "Which is warmer, Room201 or Room202?"
+    - location: ["Node 11", "Node 15"]  // MUST be a list
+    - aggregation_level: null
+
+    2. **aggregation**: Query asks for GROUPED temporal data (breakdown by time period)
+    - Keywords: "daily", "hourly", "weekly", "by day", "by hour", "each day", "show breakdown"
+    - Examples: "Show DAILY temperature averages", "HOURLY trends"
+    - location: "Node 15"  // MUST be a string
     - aggregation_level: "hourly" | "daily" | "weekly"
 
-    3. **query**: Simple statistical query for ONE location without temporal breakdown
-    - Examples: "What was the average?", "Show me temperature in Room201"
-    - location: "Room201"
+    3. **query**: Simple single-value statistic (use this if not comparison or aggregation)
+    - Examples: "Average temperature last week", "Max humidity yesterday"
+    - Returns: ONE number for the entire period
+    - location: "Node 15"  // MUST be a string
     - aggregation_level: null
+
+    CRITICAL RULES:
+    - If query mentions TWO OR MORE locations → intent_type MUST be "comparison"
+    - If location is a LIST → intent_type MUST be "comparison"
+    - If intent_type is "comparison" → location MUST be a list
+    - If intent_type is "query" → location MUST be a single string
 
     DATE PARSING RULES:
     - "yesterday" = previous day from current date (e.g., {(current_date - timedelta(days=1)).strftime('%Y-%m-%d')})
