@@ -44,6 +44,10 @@ from .config import (
     load_config
 )
 
+from .llm_bridge import (
+    LLMDataBridge
+)
+
 __all__ = [
     # Main repository
     'SensorDataRepository',
@@ -72,6 +76,9 @@ __all__ = [
     'SMTAPIError',
     'SMTAuthenticationError',
     'RepositoryError',
+
+    # Data Bridge
+    'LLMDataBridge',
 ]
 
 __version__ = '0.1.0'
