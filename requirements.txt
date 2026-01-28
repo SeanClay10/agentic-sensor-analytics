@@ -1,5 +1,7 @@
 data
 langchain
+langchain-core
+langgraph
 pandas
 scipy
 pydantic
